@@ -77,12 +77,14 @@ void handleSerialInput(void) {
       nDebug++;
       incomingByte = mySerial.read();
       if (incomingByte==0x0A) { /* The sentence ends with lineFeed (0x0A) */
-        //ser_processTheSerialInbuffer();
-        line1=line2;
-        line2=line3;
-        line3=line4;
-        ser_inbuffer2[ser_iWrite2]=0; /* terminating zero */       
-        line4=(String) /* "2:"+ */ ser_inbuffer2;
+        if ((ser_inbuffer2[0]=='l') && (ser_inbuffer2[1]=='c')) {
+          //ser_processTheSerialInbuffer();
+          line1=line2;
+          line2=line3;
+          line3=line4;
+          ser_inbuffer2[ser_iWrite2]=0; /* terminating zero */       
+          line4=(String) /* "2:"+ */ &ser_inbuffer2[2];
+        }  
         Serial.println(line4); /* auf USB-Serielle weiterleiten zum long-debugging auf PC */
         ser_iWrite2=0;
       } else {
