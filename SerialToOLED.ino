@@ -17,6 +17,9 @@
  *     2021-08-24 Uwe:    
  *        - Improvement: Do not show the channel number. This gives more space. 
  *        - Fix: smaller line buffer, to avoid pixel overlay effects
+ *     2023-02-28 Uwe:    
+ *        - Improvement: Init text improved. 
+ *        - Improvement: Removed the running counter from display. 
  *     
  */
 
@@ -47,10 +50,10 @@ int nDebug;
  
  char ser_inbuffer[SER_INBUFFER_SIZE];
  char ser_inbuffer2[SER_INBUFFER_SIZE];
- String line1 = "Eins";
- String line2 = "Zwei";
- String line3 = "PreCharge";
- String line4 = "231V";
+ String line1 = "Hello";
+ String line2 = "Init...";
+ String line3 = "...waiting";
+ String line4 = "for data...";
  
  
 void handleSerialInput(void) {
@@ -111,15 +114,17 @@ void setup() {
     Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Disable*/, true /*Serial Enable*/);
     delay(300);
     Heltec.display->clear();
-    Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
-    Heltec.display->setFont(ArialMT_Plain_10);
-    Heltec.display->drawString(0, 0, "Erste Zeile");
-    Heltec.display->setFont(ArialMT_Plain_16);
-    Heltec.display->drawString(0, 10, "Zweite");
-    Heltec.display->setFont(ArialMT_Plain_24);
-    Heltec.display->drawString(0, 26, "Dritte");
-    Heltec.display -> display();
-    delay(1000);
+    #ifdef USE_TEXT_TESTS
+      Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
+      Heltec.display->setFont(ArialMT_Plain_10);
+      Heltec.display->drawString(0, 0, "Erste Zeile");
+      Heltec.display->setFont(ArialMT_Plain_16);
+      Heltec.display->drawString(0, 10, "Zweite");
+      Heltec.display->setFont(ArialMT_Plain_24);
+      Heltec.display->drawString(0, 26, "Dritte");
+      Heltec.display -> display();
+      delay(1000);
+    #endif  
     Heltec.display->setFont(ArialMT_Plain_16);
     Heltec.display->setContrast(255);
     //Heltec.display->invertDisplay();
@@ -149,7 +154,9 @@ void loop() {
     Heltec.display -> drawString(0, 40, line4);
   #endif  
   Heltec.display->setFont(ArialMT_Plain_16);
-  Heltec.display -> drawString(120, 0, (String)(n_loops % 10));
+  #ifdef OLED_SHOW_LOOPS
+    Heltec.display -> drawString(120, 0, (String)(n_loops % 10));
+  #endif  
   #ifdef OLED_SHOW_DEBUG_COUNTER
     Heltec.display -> drawString(100,16, (String)(nDebug % 1000));
   #endif  
