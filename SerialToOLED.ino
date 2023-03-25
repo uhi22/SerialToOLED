@@ -3,11 +3,13 @@
 /* OLED Display with Serial input
  *  
  *  Hardware: HTIT-WB32, also known as heltec wifi kit 32.
- *  Arduino board name: WIFI_Kit_32
+ *  Arduino board name: WiFi Kit 32
  *  
- *  Regarding Arduino board and library, there are some compatibility issues for Raspbian.
- *  Solving is documented in the boards.txt. In short: take the library from heltech, and add the board config into
- *  the board folder of the original espressif ESP board directory.
+ *  Version for Arduino IDE 2.0.4 (March 2023) together with
+ *  Heltec board "Heltec ESP32 Series Dev-boards by Heltec" Version 0.0.7
+ *  From board manager url
+ *  https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/releases/download/0.0.7/package_heltec_esp32_index.json
+ *
  *  
  *  Functionality:
  *   - Listens on the serial port (pin18) and on reception of 0x0A it shows the line on the OLED display. 
@@ -20,6 +22,8 @@
  *     2023-02-28 Uwe:    
  *        - Improvement: Init text improved. 
  *        - Improvement: Removed the running counter from display. 
+ *     2023-03-25 Uwe: 
+ *        - Migration to new Arduino IDE and new libraries   
  *     
  */
 
@@ -39,7 +43,12 @@ HardwareSerial mySerial(1); /* 0 would be the USB-Serial, e.g. for Serial.print.
 //#define OLED_SHOW_DEBUG_COUNTER
 
 #ifdef USE_OLED
-  #include "heltec.h"
+  // For a connection via I2C using the Arduino Wire include:
+  #include <Wire.h>               
+  #include "HT_SSD1306Wire.h"
+
+  SSD1306Wire  display(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED); // addr , freq , i2c group , resolution , rst
+
 #endif
 
 int n_loops;
@@ -111,22 +120,24 @@ void setup() {
   digitalWrite(LED,LOW);
   
   #ifdef USE_OLED
-    Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Disable*/, true /*Serial Enable*/);
+    //Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Disable*/, true /*Serial Enable*/);
+    display.init();
+    display.setFont(ArialMT_Plain_10);    
     delay(300);
-    Heltec.display->clear();
-    #ifdef USE_TEXT_TESTS
-      Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
-      Heltec.display->setFont(ArialMT_Plain_10);
-      Heltec.display->drawString(0, 0, "Erste Zeile");
-      Heltec.display->setFont(ArialMT_Plain_16);
-      Heltec.display->drawString(0, 10, "Zweite");
-      Heltec.display->setFont(ArialMT_Plain_24);
-      Heltec.display->drawString(0, 26, "Dritte");
-      Heltec.display -> display();
+    //Heltec.display->clear();
+    //#ifdef USE_TEXT_TESTS
+      display.setTextAlignment(TEXT_ALIGN_LEFT);
+      display.setFont(ArialMT_Plain_10);
+      display.drawString(0, 0, "Erste Zeile");
+      //Heltec.display->setFont(ArialMT_Plain_16);
+      //Heltec.display->drawString(0, 10, "Zweite");
+      //Heltec.display->setFont(ArialMT_Plain_24);
+      //Heltec.display->drawString(0, 26, "Dritte");
+      //Heltec.display -> display();
       delay(1000);
-    #endif  
-    Heltec.display->setFont(ArialMT_Plain_16);
-    Heltec.display->setContrast(255);
+    //#endif  
+    //Heltec.display->setFont(ArialMT_Plain_16);
+    //Heltec.display->setContrast(255);
     //Heltec.display->invertDisplay();
     //Heltec.display->flipScreenVertically(); /* tut nix ?!? */
     //Heltec.display->mirrorScreen(); /* spiegeln rechts/links */
@@ -138,7 +149,7 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   handleSerialInput();
-  Heltec.display->clear();
+  display.clear();
   #ifdef OLED_FOUR_LINES
     Heltec.display->setFont(ArialMT_Plain_16);
     Heltec.display -> drawString(0,  0, line1);
@@ -147,20 +158,20 @@ void loop() {
     Heltec.display -> drawString(0, 48, line4);
   #endif  
   #ifdef OLED_THREE_LINES
-    Heltec.display->setFont(ArialMT_Plain_16);
-    Heltec.display -> drawString(0,  0, line2);
-    Heltec.display->setFont(ArialMT_Plain_24);
-    Heltec.display -> drawString(0, 18, line3);
-    Heltec.display -> drawString(0, 40, line4);
+    display.setFont(ArialMT_Plain_16);
+    display.drawString(0,  0, line2);
+    display.setFont(ArialMT_Plain_24);
+    display.drawString(0, 18, line3);
+    display.drawString(0, 40, line4);
   #endif  
-  Heltec.display->setFont(ArialMT_Plain_16);
+  display.setFont(ArialMT_Plain_16);
   #ifdef OLED_SHOW_LOOPS
-    Heltec.display -> drawString(120, 0, (String)(n_loops % 10));
+    display.drawString(120, 0, (String)(n_loops % 10));
   #endif  
   #ifdef OLED_SHOW_DEBUG_COUNTER
-    Heltec.display -> drawString(100,16, (String)(nDebug % 1000));
+    display.drawString(100,16, (String)(nDebug % 1000));
   #endif  
-  Heltec.display -> display();
+  display.display();
   delay(100);
   n_loops++;
   if ((n_loops % 30)==0) {
