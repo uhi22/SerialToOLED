@@ -1,45 +1,44 @@
 
 
-/* OLED Display with Serial input
- *  
- *  Hardware: HTIT-WB32, also known as heltec wifi kit 32.
- *  Arduino board name: WiFi Kit 32
- *  
- *  Version for Arduino IDE 2.0.4 (March 2023) together with
- *  Heltec board "Heltec ESP32 Series Dev-boards by Heltec" Version 0.0.7
- *  From board manager url
- *  https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/releases/download/0.0.7/package_heltec_esp32_index.json
- *
- *  
- *  Functionality:
- *   - Listens on the serial port (pin18) and on reception of 0x0A it shows the line on the OLED display. 
- *   - Scrolls the older lines up.
- *     
- *  Changes:
- *     2021-08-24 Uwe:    
- *        - Improvement: Do not show the channel number. This gives more space. 
- *        - Fix: smaller line buffer, to avoid pixel overlay effects
- *     2023-02-28 Uwe:    
- *        - Improvement: Init text improved. 
- *        - Improvement: Removed the running counter from display. 
- *     2023-03-25 Uwe: 
- *        - Migration to new Arduino IDE and new libraries   
- *     
+/*
+     
+ * CAN Bus options for the ESP32:
+   (A)  http://www.iotsharing.com/2017/09/how-to-use-arduino-esp32-can-interface.html refers to   
+      https://github.com/nhatuan84/esp32-can-protocol-demo  but this is quite old and does not
+      use interrupts. So it has the risk to run into the fifo-full-bug.
+   (B) The Arduino Library manager contains ACAN_ESP32, which refers to
+      https://github.com/pierremolinaro/acan-esp32 This is still active (last commit 2022).
+      But no interrupts uses. Risk to run into the fifo-full-bug.
+   (C) Arduino Library manager: CAN by Sandeep Mistry, https://github.com/sandeepmistry/arduino-CAN
+   (D) Arduino Library manager: CAN Adafruit fork by Sandeep Mistry  , see https://github.com/adafruit/arduino-CAN
+       It looks promising, because it uses a callback (interrupt?), but also
+       crash is reported on ESP32 (https://github.com/adafruit/arduino-CAN/issues/13)
+
+  We go with option (D).
  */
 
-/* The pins for the second serial port. The first one is used by the USB interface (programming and Arduino console). */
-/* see https://quadmeup.com/arduino-esp32-and-3-hardware-serial-ports/ */
-#include <HardwareSerial.h>
-HardwareSerial mySerial(1); /* 0 would be the USB-Serial, e.g. for Serial.print. 1 is the Serial2. 
-                               The pins can be freely chosen, see below. */
-#define TX2_PIN 17 /* 17 works fine on the HELTEC ESP32 OLED module for TX */
-#define RX2_PIN 18 /* 16 does not work (perhaps used for other purpose on the board), 18 works,  */
 
+#define USE_CAN_INPUT /* if this is defined, the board uses input fom CAN instead of serial line */
+
+#ifdef USE_CAN_INPUT
+  #include <CAN.h>
+  #define CAN_RX_PIN 22 /* The default would be 4, but this is occupied by the OLED */
+  #define CAN_TX_PIN 5
+#else
+  #define USE_SERIAL_INPUT
+  /* The pins for the second serial port. The first one is used by the USB interface (programming and Arduino console). */
+  /* see https://quadmeup.com/arduino-esp32-and-3-hardware-serial-ports/ */
+  #include <HardwareSerial.h>
+  HardwareSerial mySerial(1); /* 0 would be the USB-Serial, e.g. for Serial.print. 1 is the Serial2. 
+                               The pins can be freely chosen, see below. */
+  #define TX2_PIN 17 /* 17 works fine on the HELTEC ESP32 OLED module for TX */
+  #define RX2_PIN 18 /* 16 does not work (perhaps used for other purpose on the board), 18 works,  */
+#endif
  
 #define USE_OLED
 
-//#define OLED_FOUR_LINES
-#define OLED_THREE_LINES
+#define OLED_FOUR_LINES
+//#define OLED_THREE_LINES
 //#define OLED_SHOW_DEBUG_COUNTER
 
 #ifdef USE_OLED
@@ -53,18 +52,85 @@ HardwareSerial mySerial(1); /* 0 would be the USB-Serial, e.g. for Serial.print.
 
 int n_loops;
 int nDebug;
+#ifdef USE_SERIAL_INPUT
  #define SER_INBUFFER_SIZE 20
  uint8_t ser_iWrite=0;
  uint8_t ser_iWrite2=0;
  
  char ser_inbuffer[SER_INBUFFER_SIZE];
  char ser_inbuffer2[SER_INBUFFER_SIZE];
+#endif
  String line1 = "Hello";
  String line2 = "Init...";
  String line3 = "...waiting";
  String line4 = "for data...";
  
- 
+
+#ifdef USE_CAN_INPUT
+uint32_t CAN_RX_uptime;
+uint16_t CAN_RX_checkpoint;
+uint16_t CAN_RX_EVSEPresentVoltage;
+uint8_t canRxData[8];
+uint32_t canRxId;
+uint32_t canCounterRxOverall;
+uint32_t canCounterRxUsed;
+
+
+void translateCanInputVariablesToStrings(void) {
+/* this runs in task context. It takes the variables which are
+set by the interrupt, and translates them into strings. */
+line1 = "up "+ String(CAN_RX_uptime);
+line2 = "chckpt " + String(CAN_RX_checkpoint);
+line3 = "EVSEPrV " + String(CAN_RX_EVSEPresentVoltage);
+line4 = "cnt " + String(canCounterRxOverall) + " " + String(canCounterRxUsed);
+}
+
+void decodeReceivedPacket(void) {
+ /* attention: This runs in callback/interrupt context. Do not use serial.print here. */
+ canCounterRxOverall++;
+ if (canRxId==0x567) {
+    CAN_RX_uptime = canRxData[0];
+    CAN_RX_uptime <<=8;
+    CAN_RX_uptime += canRxData[1];
+    CAN_RX_uptime <<=8;
+    CAN_RX_uptime += canRxData[2];
+    CAN_RX_checkpoint = canRxData[3];
+    CAN_RX_checkpoint <<=8;
+    CAN_RX_checkpoint += canRxData[4];
+    canCounterRxUsed++;
+ }
+ if (canRxId==0x568) {
+    CAN_RX_EVSEPresentVoltage = canRxData[0];
+    CAN_RX_EVSEPresentVoltage <<=8;
+    CAN_RX_EVSEPresentVoltage += canRxData[1];
+    canCounterRxUsed++;
+ }
+}
+
+void onCanReceive(int packetSize) {
+  uint8_t i;
+  // received a packet
+  /* attention: do not use Serial.print here. We are in interrupt context.
+     See https://github.com/adafruit/arduino-CAN/issues/13 */  
+  if (CAN.packetExtended()) {
+    /* extended */
+  } else {
+    /* standard */
+    canRxId=CAN.packetId();
+    if (packetSize==8) {
+      for (i=0; i<8; i++) {     
+        if (CAN.available()) {
+          canRxData[i]=CAN.read();
+        }
+      }
+      decodeReceivedPacket();              
+    }
+  }
+}
+#endif
+
+
+#ifdef USE_SERIAL_INPUT 
 void handleSerialInput(void) {
   /* read the serial data.
    *  This reads from TWO different serial inputs.
@@ -105,14 +171,18 @@ void handleSerialInput(void) {
       }
    }        
 }
-
+#endif
 
 void setup() {
   // put your setup code here, to run once:
+#ifdef USE_SERIAL_INPUT  
   ser_inbuffer[0]=0;
+#endif  
   Serial.begin(9600);
   
+#ifdef USE_SERIAL_INPUT
   mySerial.begin(19200, SERIAL_8N1, RX2_PIN, TX2_PIN);
+#endif
   Serial.print("Hello World.\n");
   pinMode(LED,OUTPUT);
   digitalWrite(LED,HIGH); /* Die weiße LED neben dem OLED-Display */
@@ -141,21 +211,39 @@ void setup() {
     //Heltec.display->invertDisplay();
     //Heltec.display->flipScreenVertically(); /* tut nix ?!? */
     //Heltec.display->mirrorScreen(); /* spiegeln rechts/links */
-  #endif  
-  Serial.print("Setup finished.\n");
+  #endif
 
+  #ifdef USE_CAN_INPUT
+      //Serial.println("default pins: " + String(DEFAULT_CAN_RX_PIN) + " " + String(DEFAULT_CAN_TX_PIN));
+      /* configure the pins for the CAN: */
+      CAN.setPins(CAN_RX_PIN, CAN_TX_PIN);
+      /* start the CAN bus at 500 kbps */
+      if (!CAN.begin(500E3)) {
+        Serial.println("Starting CAN failed!");
+        while (1);
+      }
+
+      // register the receive callback
+      CAN.onReceive(onCanReceive);
+  #endif      
+  Serial.print("Setup finished.\n");
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  handleSerialInput();
+  #ifdef USE_SERIAL_INPUT
+    handleSerialInput();
+  #endif
+  #ifdef USE_CAN_INPUT  
+    translateCanInputVariablesToStrings();
+  #endif
   display.clear();
   #ifdef OLED_FOUR_LINES
-    Heltec.display->setFont(ArialMT_Plain_16);
-    Heltec.display -> drawString(0,  0, line1);
-    Heltec.display -> drawString(0, 16, line2);
-    Heltec.display -> drawString(0, 32, line3);
-    Heltec.display -> drawString(0, 48, line4);
+    display.setFont(ArialMT_Plain_16);
+    display.drawString(0,  0, line1);
+    display.drawString(0, 16, line2);
+    display.drawString(0, 32, line3);
+    display.drawString(0, 48, line4);
   #endif  
   #ifdef OLED_THREE_LINES
     display.setFont(ArialMT_Plain_16);
@@ -175,7 +263,9 @@ void loop() {
   delay(100);
   n_loops++;
   if ((n_loops % 30)==0) {
-    mySerial.println(n_loops);
+    #ifdef USE_SERIAL_INPUT
+      mySerial.println(n_loops);
+    #endif
   }
 
 }
