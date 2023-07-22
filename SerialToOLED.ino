@@ -70,6 +70,7 @@ int nDebug;
 uint32_t CAN_RX_uptime;
 uint16_t CAN_RX_checkpoint;
 uint16_t CAN_RX_EVSEPresentVoltage;
+int16_t CAN_RX_InletVoltage;
 uint8_t canRxData[8];
 uint32_t canRxId;
 uint32_t canCounterRxOverall;
@@ -79,7 +80,7 @@ uint32_t canCounterRxUsed;
 void translateCanInputVariablesToStrings(void) {
 /* this runs in task context. It takes the variables which are
 set by the interrupt, and translates them into strings. */
-line1 = "up "+ String(CAN_RX_uptime);
+line1 = "up "+ String(CAN_RX_uptime) + "  in " + String(CAN_RX_InletVoltage) + "V";
 line2 = "chckpt " + String(CAN_RX_checkpoint);
 line3 = "EVSEPrV " + String(CAN_RX_EVSEPresentVoltage);
 line4 = "cnt " + String(canCounterRxOverall) + " " + String(canCounterRxUsed);
@@ -103,6 +104,9 @@ void decodeReceivedPacket(void) {
     CAN_RX_EVSEPresentVoltage = canRxData[0];
     CAN_RX_EVSEPresentVoltage <<=8;
     CAN_RX_EVSEPresentVoltage += canRxData[1];
+    CAN_RX_InletVoltage = (int8_t)(canRxData[2]);
+    CAN_RX_InletVoltage <<=8;
+    CAN_RX_InletVoltage |= (int8_t)(canRxData[3]);
     canCounterRxUsed++;
  }
 }
